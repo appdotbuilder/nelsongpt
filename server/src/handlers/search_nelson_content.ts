@@ -1,12 +1,35 @@
 
+import { db } from '../db';
+import { nelsonContentTable } from '../db/schema';
 import { type SearchNelsonContentInput, type NelsonContent } from '../schema';
+import { sql } from 'drizzle-orm';
 
 export async function searchNelsonContent(input: SearchNelsonContentInput): Promise<NelsonContent[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to perform vector similarity search
-    // against the Nelson Textbook content using pgvector extension.
-    // It should convert the query to embeddings and find the most relevant
-    // medical content based on the similarity threshold.
+  try {
+    // For now, use PostgreSQL's full-text search since pgvector is not set up yet
+    // In the future, this should be replaced with vector similarity search
+    // using embeddings stored in the embedding column
     
-    return Promise.resolve([]);
+    const results = await db.select()
+      .from(nelsonContentTable)
+      .where(
+        sql`to_tsvector('english', ${nelsonContentTable.content}) @@ plainto_tsquery('english', ${input.query})`
+      )
+      .orderBy(
+        sql`ts_rank(to_tsvector('english', ${nelsonContentTable.content}), plainto_tsquery('english', ${input.query})) DESC`
+      )
+      .limit(input.limit)
+      .execute();
+
+    // Convert the database results to match the schema format
+    return results.map(result => ({
+      ...result,
+      page_number: result.page_number ?? undefined, // Convert null to undefined
+      embedding: result.embedding ? (result.embedding as number[]) : undefined,
+      metadata: result.metadata ? (result.metadata as any) : undefined
+    }));
+  } catch (error) {
+    console.error('Nelson content search failed:', error);
+    throw error;
+  }
 }
